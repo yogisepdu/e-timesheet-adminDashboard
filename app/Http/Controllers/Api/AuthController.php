@@ -12,7 +12,17 @@ use Illuminate\Validation\ValidationException;
 class AuthController extends Controller
 {
     /**
+     * Lama masa berlaku token mobile.
+     *
+     * Token berlaku selama 6 jam sejak login berhasil.
+     */
+    private const TOKEN_LIFETIME_HOURS = 6;
+
+    /**
      * Login aplikasi Android.
+     *
+     * Setiap login akan menghasilkan Sanctum Personal Access Token
+     * yang berlaku selama 6 jam.
      */
     public function login(Request $request): JsonResponse
     {
@@ -39,6 +49,12 @@ class AuthController extends Controller
             ->where('username', $username)
             ->first();
 
+        /*
+        |--------------------------------------------------------------------------
+        | Validasi username dan password
+        |--------------------------------------------------------------------------
+        */
+
         if (
             ! $user ||
             ! Hash::check($validated['password'], $user->password)
@@ -50,45 +66,120 @@ class AuthController extends Controller
             ]);
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Validasi status akun
+        |--------------------------------------------------------------------------
+        */
+
         if (! $user->is_active) {
             return response()->json([
                 'message' => 'Akun Anda sedang tidak aktif. Silakan hubungi administrator.',
             ], 403);
         }
 
-        /**
-         * Aplikasi Android saat ini khusus digunakan oleh Pengawas.
-         */
+        /*
+        |--------------------------------------------------------------------------
+        | Validasi akses aplikasi mobile
+        |--------------------------------------------------------------------------
+        |
+        | Saat ini aplikasi Android hanya diperuntukkan bagi Pengawas.
+        |
+        */
+
         if (! $user->isPengawas()) {
             return response()->json([
                 'message' => 'Akun ini tidak memiliki akses ke aplikasi mobile.',
             ], 403);
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Device name
+        |--------------------------------------------------------------------------
+        */
+
         $deviceName = $validated['device_name']
             ?? 'android-device';
 
-        /**
-         * Simpan waktu login terakhir.
-         */
+        /*
+        |--------------------------------------------------------------------------
+        | Waktu login dan expiration token
+        |--------------------------------------------------------------------------
+        |
+        | Gunakan waktu server Laravel sebagai sumber waktu.
+        |
+        | Contoh:
+        |
+        | login     : 02:50
+        | expired   : 08:50
+        |
+        */
+
+        $loggedInAt = now();
+
+        $expiresAt = $loggedInAt->copy()->addHours(
+            self::TOKEN_LIFETIME_HOURS
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | Simpan waktu login terakhir
+        |--------------------------------------------------------------------------
+        */
+
         $user->forceFill([
-            'last_login_at' => now(),
+            'last_login_at' => $loggedInAt,
         ])->save();
 
-        /**
-         * Generate Sanctum Personal Access Token.
-         */
-        $token = $user
-            ->createToken(
-                $deviceName,
-                ['mobile'],
-            )
-            ->plainTextToken;
+        /*
+        |--------------------------------------------------------------------------
+        | Generate Sanctum Personal Access Token
+        |--------------------------------------------------------------------------
+        |
+        | Parameter ketiga createToken() adalah expiresAt.
+        |
+        | Dengan demikian token ini secara eksplisit hanya berlaku
+        | sampai waktu $expiresAt.
+        |
+        */
+
+        $accessToken = $user->createToken(
+            $deviceName,
+            ['mobile'],
+            $expiresAt,
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | Response login
+        |--------------------------------------------------------------------------
+        */
 
         return response()->json([
             'message' => 'Login berhasil.',
+
             'token_type' => 'Bearer',
-            'token' => $token,
+
+            'token' => $accessToken->plainTextToken,
+
+            /*
+            | Kirim expiration ke mobile.
+            |
+            | Mobile akan menyimpan nilai ini di SecureStore
+            | untuk mengetahui kapan session lokal harus berakhir.
+            */
+            'expires_at' => $expiresAt->toISOString(),
+
+            /*
+            | Waktu login server.
+            */
+            'logged_in_at' => $loggedInAt->toISOString(),
+
+            /*
+            | Lama session dalam jam.
+            */
+            'expires_in_hours' => self::TOKEN_LIFETIME_HOURS,
 
             'user' => [
                 'id' => $user->id,
@@ -129,6 +220,8 @@ class AuthController extends Controller
 
     /**
      * Logout device yang sedang digunakan.
+     *
+     * Hanya token yang sedang digunakan yang dihapus.
      */
     public function logout(Request $request): JsonResponse
     {

@@ -1,9 +1,11 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\MasterDataController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\TimeSheetController;
+use App\Http\Controllers\Api\TimeSheetPdfController;
 
 /*
 |--------------------------------------------------------------------------
@@ -45,6 +47,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('/logout', [
         AuthController::class,
         'logout',
+    ]);
+
+    Route::get('/dashboard', [
+        DashboardController::class,
+        'index',
     ]);
 
     /*
@@ -111,5 +118,10 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('/time-sheets/{timeSheet}/submit', [
         TimeSheetController::class,
         'submitDraft',
+    ]);
+
+    Route::get('/time-sheets/{timeSheet}/pdf', [
+        TimeSheetPdfController::class,
+        'download',
     ]);
 });

@@ -259,10 +259,31 @@
         .empty {
             color: transparent;
         }
+
+        .status-watermark {
+            position: fixed;
+            top: 43%;
+            left: 10%;
+            width: 80%;
+
+            text-align: center;
+
+            font-size: 46px;
+            font-weight: bold;
+            letter-spacing: 2px;
+
+            color: #000;
+            opacity: 0.08;
+
+            transform: rotate(-25deg);
+
+            z-index: -1;
+        }
     </style>
 </head>
 
 <body>
+
     @php
         $formatNumber = static function ($value, int $decimals = 2): string {
             if ($value === null || $value === '') {
@@ -280,6 +301,13 @@
 
         $productionHa = $timeSheet->production_unit === 'Ha' ? $formatNumber($timeSheet->production) : '';
     @endphp
+
+    {{-- STATUS WATERMARK --}}
+    @if (!empty($statusLabel))
+        <div class="status-watermark">
+            {{ strtoupper($statusLabel) }}
+        </div>
+    @endif
 
     <div class="sheet">
 
